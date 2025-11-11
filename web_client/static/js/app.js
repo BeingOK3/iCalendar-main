@@ -13,6 +13,7 @@ let calendar = null;
 let calendars = [];
 let currentEvent = null;
 const API_BASE = window.location.origin;
+let isSending = false; // 发送状态标志
 
 // ========== 初始化 ==========
 document.addEventListener('DOMContentLoaded', async function() {
@@ -148,7 +149,17 @@ async function loadEvents(startDate = null, endDate = null, calendarName = null)
 
 // ========== 聊天功能 ==========
 async function processNaturalLanguage(text) {
+    // 检查是否正在发送中
+    if (isSending) {
+        console.log('Already sending, please wait...');
+        return null;
+    }
+    
     try {
+        // 设置发送状态
+        isSending = true;
+        updateSendButtonState();
+        
         // 添加用户消息到聊天界面
         addMessage(text, 'user');
         
@@ -185,6 +196,10 @@ async function processNaturalLanguage(text) {
         hideTypingIndicator();
         addMessage('抱歉，处理您的请求时出现错误。', 'ai');
         return null;
+    } finally {
+        // 恢复发送状态
+        isSending = false;
+        updateSendButtonState();
     }
 }
 
@@ -258,6 +273,26 @@ function hideTypingIndicator() {
     const indicator = document.getElementById('typingIndicator');
     if (indicator) {
         indicator.remove();
+    }
+}
+
+// 更新发送按钮状态
+function updateSendButtonState() {
+    const sendBtn = document.getElementById('sendBtn');
+    const chatInput = document.getElementById('chatInput');
+    
+    if (isSending) {
+        sendBtn.disabled = true;
+        sendBtn.style.opacity = '0.5';
+        sendBtn.style.cursor = 'not-allowed';
+        chatInput.disabled = true;
+        chatInput.style.opacity = '0.7';
+    } else {
+        sendBtn.disabled = false;
+        sendBtn.style.opacity = '1';
+        sendBtn.style.cursor = 'pointer';
+        chatInput.disabled = false;
+        chatInput.style.opacity = '1';
     }
 }
 
@@ -536,6 +571,12 @@ function formatDateTimeLocal(date) {
 function bindEventListeners() {
     // 聊天输入提交
     document.getElementById('sendBtn').addEventListener('click', async () => {
+        // 如果正在发送中，忽略点击
+        if (isSending) {
+            console.log('请等待上一条消息处理完成');
+            return;
+        }
+        
         const input = document.getElementById('chatInput');
         const text = input.value.trim();
         
@@ -552,7 +593,10 @@ function bindEventListeners() {
     document.getElementById('chatInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            document.getElementById('sendBtn').click();
+            // 如果正在发送中，忽略回车键
+            if (!isSending) {
+                document.getElementById('sendBtn').click();
+            }
         }
     });
     
