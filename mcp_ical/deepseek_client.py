@@ -230,16 +230,30 @@ class DeepSeekClient:
 4. 置信度应该在 0-1 之间，表示对解析结果的确信程度
 
 删除和更新事件的特殊处理：
-- 对于删除操作（如"删除和张三的会议"、"明天不打游戏了"），必须同时提取：
-  1. 标题关键词 → title 参数
-  2. 时间信息 → start_date（如果只有日期）或 start_time（如果有具体时间）
+- 对于删除操作，分为两种情况：
   
-  示例：
-  - "删除和张三的会议" → {{"action": "delete_event", "params": {{"title": "张三"}}}}
-  - "明天不打游戏了" → {{"action": "delete_event", "params": {{"title": "打游戏", "start_date": "2025-11-12"}}}}
-  - "下午3点的开会取消" → {{"action": "delete_event", "params": {{"title": "开会", "start_time": "2025-11-11T15:00:00"}}}}
+  A. 删除特定事件（有明确标题）：
+     必须同时提取：
+     1. 标题关键词 → title 参数
+     2. 时间信息 → start_date（如果只有日期）或 start_time（如果有具体时间）
+     
+     示例：
+     - "删除和张三的会议" → {{"action": "delete_event", "params": {{"title": "张三"}}}}
+     - "明天不打游戏了" → {{"action": "delete_event", "params": {{"title": "打游戏", "start_date": "2025-11-12"}}}}
+     - "下午3点的开会取消" → {{"action": "delete_event", "params": {{"title": "开会", "start_time": "2025-11-11T15:00:00"}}}}
+  
+  B. 批量删除（删除所有/全部事件）：
+     当用户说"删除所有"、"删除全部"、"清空"等批量操作时：
+     1. 将 title 设为 "*" 表示匹配所有事件
+     2. 提取时间范围到 start_date
+     
+     示例：
+     - "删除明天所有事件" → {{"action": "delete_event", "params": {{"title": "*", "start_date": "2025-11-12"}}}}
+     - "清空今天的日程" → {{"action": "delete_event", "params": {{"title": "*", "start_date": "2025-11-11"}}}}
+     - "删除本周所有安排" → {{"action": "delete_event", "params": {{"title": "*", "start_date": "2025-11-11", "end_date": "2025-11-17"}}}}
   
   ⚠️ 重要：当用户提到"明天"、"今天"、"后天"等时间词时，必须转换为 start_date 或 start_time！
+  ⚠️ 特别注意："所有"、"全部"、"清空"等词表示批量操作，使用 title="*"
   
 - 对于更新操作（如"把明天的会议改到后天"），提取原标题到 search_title，原时间到 search_date，新信息到相应字段
   示例1：{{"action": "update_event", "params": {{"search_title": "会议", "search_date": "2025-11-12", "start_time": "2025-11-13T09:00:00"}}}}

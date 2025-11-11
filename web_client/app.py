@@ -657,23 +657,78 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                 for evt in events:
                     logger.info(f"  📌 Event: {evt.title} | Start: {evt.start_time}")
                 
-                # 查找标题匹配的事件（模糊匹配）
-                matching_events = [
-                    e for e in events 
-                    if event_title.lower() in e.title.lower() or e.title.lower() in event_title.lower()
-                ]
-                
-                logger.info(f"📋 Found {len(matching_events)} matching events")
+                # 查找标题匹配的事件
+                if event_title == "*":
+                    # 批量删除：匹配所有事件
+                    matching_events = events
+                    logger.info(f"📋 Batch delete mode: matched all {len(matching_events)} events")
+                else:
+                    # 单个删除：模糊匹配标题
+                    matching_events = [
+                        e for e in events 
+                        if event_title.lower() in e.title.lower() or e.title.lower() in event_title.lower()
+                    ]
+                    logger.info(f"📋 Found {len(matching_events)} matching events")
                 
                 if not matching_events:
                     time_desc = ""
                     if target_date_str or target_time_str:
                         time_desc = f"在指定时间范围内"
+                    
+                    if event_title == "*":
+                        return {
+                            "success": True,
+                            "message": f"{time_desc}没有找到任何事件"
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": f"{time_desc}没有找到标题包含 '{event_title}' 的事件"
+                        }
+                
+                # 处理批量删除
+                if event_title == "*" and len(matching_events) > 1:
+                    # 批量删除多个事件
+                    deleted_count = 0
+                    failed_count = 0
+                    deleted_titles = []
+                    
+                    for event in matching_events:
+                        if calendar_manager.delete_event(event.id):
+                            deleted_count += 1
+                            deleted_titles.append(event.title)
+                        else:
+                            failed_count += 1
+                    
+                    logger.info(f"✅ Batch delete completed: {deleted_count} deleted, {failed_count} failed")
+                    
+                    # 构建响应消息
+                    time_desc = ""
+                    if target_date_str:
+                        date_obj = datetime.fromisoformat(target_date_str)
+                        time_desc = date_obj.strftime('%Y年%m月%d日')
+                    
+                    if deleted_count > 0:
+                        response_message = f"已删除{time_desc} {deleted_count} 个事件"
+                        if deleted_count <= 5:
+                            response_message += f": {', '.join(deleted_titles)}"
+                    else:
+                        response_message = "删除失败"
+                    
+                    # ========== 将助手回复添加到历史 ==========
+                    add_to_history(session_id, "assistant", response_message)
+                    
                     return {
-                        "success": False,
-                        "message": f"{time_desc}没有找到标题包含 '{event_title}' 的事件"
+                        "success": deleted_count > 0,
+                        "action": "delete_event",
+                        "message": response_message,
+                        "data": {
+                            "deleted_count": deleted_count,
+                            "failed_count": failed_count
+                        }
                     }
                 
+                # 处理单个事件删除
                 if len(matching_events) > 1:
                     # 找到多个匹配，返回列表让用户选择
                     events_list = [
