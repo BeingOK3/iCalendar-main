@@ -31,73 +31,45 @@
 
         <!-- 主要内容区 -->
         <main class="main-content">
-            <!-- 左侧面板：自然语言输入 + 快捷操作 -->
-            <aside class="sidebar">
-                <div class="sidebar-section">
-                    <h2><i class="fas fa-magic"></i> 智能助手</h2>
-                    <div class="nl-input-container">
-                        <div class="input-group">
-                            <textarea 
-                                id="nlInput" 
-                                class="nl-input" 
-                                placeholder="例如：明天下午3点提醒我开会&#10;或：本周有什么安排？&#10;或：取消明天的会议"
-                                rows="3"
-                            ></textarea>
-                            <button id="nlSubmitBtn" class="btn btn-primary">
-                                <i class="fas fa-paper-plane"></i> 发送
-                            </button>
-                        </div>
-                        <div id="nlResponse" class="nl-response"></div>
-                    </div>
-                </div>
-
-                <div class="sidebar-section">
-                    <h3><i class="fas fa-bolt"></i> 快捷操作</h3>
-                    <div class="quick-actions">
-                        <button class="btn btn-outline" onclick="quickAction('今天有什么安排？')">
-                            <i class="fas fa-calendar-day"></i> 今日日程
-                        </button>
-                        <button class="btn btn-outline" onclick="quickAction('本周有什么安排？')">
-                            <i class="fas fa-calendar-week"></i> 本周日程
-                        </button>
-                        <button class="btn btn-outline" onclick="quickAction('下个月有什么安排？')">
-                            <i class="fas fa-calendar-alt"></i> 下月日程
-                        </button>
-                        <button class="btn btn-outline" onclick="showCreateEventModal()">
-                            <i class="fas fa-plus"></i> 新建事件
-                        </button>
-                    </div>
-                </div>
-
-                <div class="sidebar-section">
-                    <h3><i class="fas fa-info-circle"></i> 使用提示</h3>
-                    <div class="tips">
-                        <p><i class="fas fa-lightbulb"></i> 使用自然语言描述您的需求</p>
-                        <p><i class="fas fa-lightbulb"></i> 支持创建、查询、更新、删除事件</p>
-                        <p><i class="fas fa-lightbulb"></i> 点击日历上的日期可快速创建事件</p>
-                        <p><i class="fas fa-lightbulb"></i> 点击事件可查看详情或编辑</p>
-                    </div>
-                </div>
-
-                <div class="sidebar-section status-section">
-                    <h3><i class="fas fa-heartbeat"></i> 系统状态</h3>
-                    <div id="systemStatus" class="status-info">
-                        <div class="status-item">
-                            <span class="status-label">日历服务:</span>
-                            <span class="status-value" id="calendarStatus">检查中...</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-label">AI 助手:</span>
-                            <span class="status-value" id="aiStatus">检查中...</span>
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- 右侧：日历视图 -->
-            <section class="calendar-container">
+            <!-- 左侧：日历视图 -->
+            <section class="calendar-section">
                 <div id="calendar"></div>
             </section>
+
+            <!-- 右侧：智能助手聊天框 -->
+            <aside class="chat-panel">
+                <div class="chat-header">
+                    <h2><i class="fas fa-robot"></i> AI 智能助手</h2>
+                    <button id="clearChatBtn" class="btn-icon" title="清空对话">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+                
+                <div class="chat-messages" id="chatMessages">
+                    <div class="welcome-message">
+                        <i class="fas fa-robot"></i>
+                        <p>您好！我是智能助手，可以帮您管理日程。</p>
+                        <div class="quick-examples">
+                            <p>试试这些操作：</p>
+                            <button class="example-btn" onclick="sendExample('明天下午3点开会')">明天下午3点开会</button>
+                            <button class="example-btn" onclick="sendExample('查看本周的日程')">查看本周的日程</button>
+                            <button class="example-btn" onclick="sendExample('删除今天的会议')">删除今天的会议</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <textarea 
+                        id="chatInput" 
+                        class="chat-input" 
+                        placeholder="输入您的需求，例如：明天下午3点和张三开会"
+                        rows="2"
+                    ></textarea>
+                    <button id="sendBtn" class="btn-send">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </aside>
         </main>
     </div>
 

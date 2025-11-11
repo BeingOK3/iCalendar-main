@@ -243,9 +243,9 @@ async def create_event(event_request: CreateEventRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.put("/api/events/{event_id}")
+@app.put("/api/events/{event_id:path}")
 async def update_event(event_id: str, update_request: UpdateEventRequest):
-    """更新事件"""
+    """更新事件 - 支持包含斜杠的事件ID"""
     if not calendar_manager:
         raise HTTPException(status_code=503, detail="Calendar manager not initialized")
     
@@ -268,13 +268,14 @@ async def update_event(event_id: str, update_request: UpdateEventRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/api/events/{event_id}")
+@app.delete("/api/events/{event_id:path}")
 async def delete_event(event_id: str):
-    """删除事件"""
+    """删除事件 - 支持包含斜杠的事件ID"""
     if not calendar_manager:
         raise HTTPException(status_code=503, detail="Calendar manager not initialized")
     
     try:
+        # URL 解码事件 ID（FastAPI 会自动解码）
         success = calendar_manager.delete_event(event_id)
         
         if success:

@@ -30,9 +30,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 绑定事件监听器
     bindEventListeners();
     
-    // 检查系统状态
-    checkSystemStatus();
-    
     console.log('Initialization complete!');
 });
 
@@ -149,10 +146,14 @@ async function loadEvents(startDate = null, endDate = null, calendarName = null)
     }
 }
 
-// ========== 自然语言处理 ==========
+// ========== 聊天功能 ==========
 async function processNaturalLanguage(text) {
     try {
-        showLoading(true);
+        // 添加用户消息到聊天界面
+        addMessage(text, 'user');
+        
+        // 显示加载动画
+        showTypingIndicator();
         
         const response = await fetch(`${API_BASE}/api/nl/execute`, {
             method: 'POST',
@@ -166,10 +167,12 @@ async function processNaturalLanguage(text) {
         
         const result = await response.json();
         
-        showLoading(false);
+        // 移除加载动画
+        hideTypingIndicator();
         
-        // 显示响应
-        showNLResponse(result);
+        // 添加AI响应到聊天界面
+        const message = result.response || result.message || '操作完成';
+        addMessage(message, 'ai');
         
         // 如果操作成功，重新加载事件
         if (result.success) {
@@ -179,10 +182,104 @@ async function processNaturalLanguage(text) {
         return result;
     } catch (error) {
         console.error('Error processing natural language:', error);
-        showToast('处理自然语言失败', 'error');
-        showLoading(false);
+        hideTypingIndicator();
+        addMessage('抱歉，处理您的请求时出现错误。', 'ai');
         return null;
     }
+}
+
+function addMessage(text, type) {
+    const chatMessages = document.getElementById('chatMessages');
+    
+    // 移除欢迎消息（如果存在）
+    const welcomeMsg = document.querySelector('.welcome-message');
+    if (welcomeMsg) {
+        welcomeMsg.remove();
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message message-${type}`;
+    
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.innerHTML = type === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-robot"></i>';
+    
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.textContent = text;
+    
+    const time = document.createElement('div');
+    time.className = 'message-time';
+    time.textContent = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    
+    content.appendChild(bubble);
+    content.appendChild(time);
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(content);
+    chatMessages.appendChild(messageDiv);
+    
+    // 滚动到最新消息
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function showTypingIndicator() {
+    const chatMessages = document.getElementById('chatMessages');
+    
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message-loading';
+    loadingDiv.id = 'typingIndicator';
+    
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.innerHTML = '<i class="fas fa-robot"></i>';
+    avatar.style.background = 'var(--light-bg)';
+    avatar.style.color = 'var(--primary-color)';
+    
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+    
+    content.appendChild(bubble);
+    loadingDiv.appendChild(avatar);
+    loadingDiv.appendChild(content);
+    chatMessages.appendChild(loadingDiv);
+    
+    // 滚动到最新消息
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function hideTypingIndicator() {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+        indicator.remove();
+    }
+}
+
+function clearChat() {
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.innerHTML = `
+        <div class="welcome-message">
+            <i class="fas fa-robot"></i>
+            <p>您好！我是智能助手，可以帮您管理日程。</p>
+            <div class="quick-examples">
+                <p>试试这些操作：</p>
+                <button class="example-btn" onclick="sendExample('明天下午3点开会')">明天下午3点开会</button>
+                <button class="example-btn" onclick="sendExample('查看本周的日程')">查看本周的日程</button>
+                <button class="example-btn" onclick="sendExample('删除今天的会议')">删除今天的会议</button>
+            </div>
+        </div>
+    `;
+}
+
+function sendExample(text) {
+    document.getElementById('chatInput').value = text;
+    document.getElementById('sendBtn').click();
 }
 
 // ========== 事件CRUD操作 ==========
@@ -359,22 +456,7 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
-function showNLResponse(result) {
-    const responseDiv = document.getElementById('nlResponse');
-    
-    if (result.success) {
-        responseDiv.className = 'nl-response success show';
-        responseDiv.textContent = result.message || '操作成功';
-    } else {
-        responseDiv.className = 'nl-response error show';
-        responseDiv.textContent = result.message || '操作失败';
-    }
-    
-    // 3秒后自动隐藏
-    setTimeout(() => {
-        responseDiv.classList.remove('show');
-    }, 5000);
-}
+
 
 function updateCalendarSelectors() {
     const selectors = [
@@ -439,43 +521,40 @@ function formatDateTimeLocal(date) {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-async function checkSystemStatus() {
-    try {
-        const response = await fetch(`${API_BASE}/api/health`);
-        const status = await response.json();
-        
-        document.getElementById('calendarStatus').textContent = status.calendar_manager ? '在线' : '离线';
-        document.getElementById('calendarStatus').className = status.calendar_manager ? 'status-value online' : 'status-value offline';
-        
-        document.getElementById('aiStatus').textContent = status.deepseek_client ? '在线' : '离线';
-        document.getElementById('aiStatus').className = status.deepseek_client ? 'status-value online' : 'status-value offline';
-    } catch (error) {
-        console.error('Error checking system status:', error);
-        document.getElementById('calendarStatus').textContent = '未知';
-        document.getElementById('aiStatus').textContent = '未知';
-    }
-}
-
 // ========== 事件监听器 ==========
 function bindEventListeners() {
-    // 自然语言输入提交
-    document.getElementById('nlSubmitBtn').addEventListener('click', async () => {
-        const input = document.getElementById('nlInput');
+    // 聊天输入提交
+    document.getElementById('sendBtn').addEventListener('click', async () => {
+        const input = document.getElementById('chatInput');
         const text = input.value.trim();
         
         if (!text) {
-            showToast('请输入内容', 'error');
             return;
         }
         
         await processNaturalLanguage(text);
         input.value = ''; // 清空输入框
+        input.style.height = 'auto'; // 重置高度
     });
     
-    // 回车提交
-    document.getElementById('nlInput').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            document.getElementById('nlSubmitBtn').click();
+    // 回车提交（Shift+Enter 换行）
+    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            document.getElementById('sendBtn').click();
+        }
+    });
+    
+    // 自动调整输入框高度
+    document.getElementById('chatInput').addEventListener('input', (e) => {
+        e.target.style.height = 'auto';
+        e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+    });
+    
+    // 清除聊天记录
+    document.getElementById('clearChatBtn').addEventListener('click', () => {
+        if (confirm('确定要清除所有聊天记录吗？')) {
+            clearChat();
         }
     });
     
@@ -531,14 +610,9 @@ function bindEventListeners() {
     });
 }
 
-// ========== 快捷操作 ==========
-function quickAction(query) {
-    document.getElementById('nlInput').value = query;
-    document.getElementById('nlSubmitBtn').click();
-}
-
 // ========== 导出函数供HTML使用 ==========
-window.quickAction = quickAction;
+window.sendExample = sendExample;
+window.clearChat = clearChat;
 window.showCreateEventModal = showCreateEventModal;
 window.closeEventModal = closeEventModal;
 window.deleteEvent = deleteEvent;
