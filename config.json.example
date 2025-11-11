@@ -1,0 +1,11 @@
+{
+  "caldav": {
+    "server_url": "https://caldav.icloud.com/",
+    "username": "your_apple_id@icloud.com",
+    "password": "your_app_specific_password"
+  },
+  "deepseek": {
+    "api_key": "your_deepseek_api_key_here",
+    "base_url": "https://api.deepseek.com"
+  }
+}

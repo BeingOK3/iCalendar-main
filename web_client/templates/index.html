@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iCalendar - 智能日历系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- FullCalendar CSS -->
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css' rel='stylesheet' />
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部导航 -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-calendar-alt"></i> iCalendar 智能日历</h1>
+                <div class="header-actions">
+                    <button id="refreshBtn" class="btn btn-secondary">
+                        <i class="fas fa-sync-alt"></i> 刷新
+                    </button>
+                    <div class="calendar-selector">
+                        <select id="calendarSelect" class="form-select">
+                            <option value="">所有日历</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主要内容区 -->
+        <main class="main-content">
+            <!-- 左侧面板：自然语言输入 + 快捷操作 -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h2><i class="fas fa-magic"></i> 智能助手</h2>
+                    <div class="nl-input-container">
+                        <div class="input-group">
+                            <textarea 
+                                id="nlInput" 
+                                class="nl-input" 
+                                placeholder="例如：明天下午3点提醒我开会&#10;或：本周有什么安排？&#10;或：取消明天的会议"
+                                rows="3"
+                            ></textarea>
+                            <button id="nlSubmitBtn" class="btn btn-primary">
+                                <i class="fas fa-paper-plane"></i> 发送
+                            </button>
+                        </div>
+                        <div id="nlResponse" class="nl-response"></div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-bolt"></i> 快捷操作</h3>
+                    <div class="quick-actions">
+                        <button class="btn btn-outline" onclick="quickAction('今天有什么安排？')">
+                            <i class="fas fa-calendar-day"></i> 今日日程
+                        </button>
+                        <button class="btn btn-outline" onclick="quickAction('本周有什么安排？')">
+                            <i class="fas fa-calendar-week"></i> 本周日程
+                        </button>
+                        <button class="btn btn-outline" onclick="quickAction('下个月有什么安排？')">
+                            <i class="fas fa-calendar-alt"></i> 下月日程
+                        </button>
+                        <button class="btn btn-outline" onclick="showCreateEventModal()">
+                            <i class="fas fa-plus"></i> 新建事件
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-info-circle"></i> 使用提示</h3>
+                    <div class="tips">
+                        <p><i class="fas fa-lightbulb"></i> 使用自然语言描述您的需求</p>
+                        <p><i class="fas fa-lightbulb"></i> 支持创建、查询、更新、删除事件</p>
+                        <p><i class="fas fa-lightbulb"></i> 点击日历上的日期可快速创建事件</p>
+                        <p><i class="fas fa-lightbulb"></i> 点击事件可查看详情或编辑</p>
+                    </div>
+                </div>
+
+                <div class="sidebar-section status-section">
+                    <h3><i class="fas fa-heartbeat"></i> 系统状态</h3>
+                    <div id="systemStatus" class="status-info">
+                        <div class="status-item">
+                            <span class="status-label">日历服务:</span>
+                            <span class="status-value" id="calendarStatus">检查中...</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">AI 助手:</span>
+                            <span class="status-value" id="aiStatus">检查中...</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 右侧：日历视图 -->
+            <section class="calendar-container">
+                <div id="calendar"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 事件详情/编辑模态框 -->
+    <div id="eventModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">事件详情</h2>
+                <button class="close-btn" onclick="closeEventModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="eventForm">
+                    <input type="hidden" id="eventId">
+                    
+                    <div class="form-group">
+                        <label for="eventTitle">
+                            <i class="fas fa-heading"></i> 标题 *
+                        </label>
+                        <input type="text" id="eventTitle" class="form-control" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="eventStartTime">
+                                <i class="fas fa-clock"></i> 开始时间 *
+                            </label>
+                            <input type="datetime-local" id="eventStartTime" class="form-control" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="eventEndTime">
+                                <i class="fas fa-clock"></i> 结束时间
+                            </label>
+                            <input type="datetime-local" id="eventEndTime" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="eventLocation">
+                            <i class="fas fa-map-marker-alt"></i> 地点
+                        </label>
+                        <input type="text" id="eventLocation" class="form-control">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="eventDescription">
+                            <i class="fas fa-align-left"></i> 描述
+                        </label>
+                        <textarea id="eventDescription" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="eventCalendar">
+                            <i class="fas fa-calendar"></i> 日历
+                        </label>
+                        <select id="eventCalendar" class="form-select">
+                        </select>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-danger" id="deleteEventBtn" onclick="deleteEvent()">
+                            <i class="fas fa-trash"></i> 删除
+                        </button>
+                        <div>
+                            <button type="button" class="btn btn-secondary" onclick="closeEventModal()">
+                                取消
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> 保存
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载提示 -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>处理中...</p>
+        </div>
+    </div>
+
+    <!-- Toast 通知 -->
+    <div id="toast" class="toast"></div>
+
+    <!-- FullCalendar JS -->
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <!-- 自定义 JS -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
