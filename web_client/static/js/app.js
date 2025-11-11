@@ -261,7 +261,8 @@ function hideTypingIndicator() {
     }
 }
 
-function clearChat() {
+async function clearChat() {
+    // ========== 清除前端显示的聊天记录 ==========
     const chatMessages = document.getElementById('chatMessages');
     chatMessages.innerHTML = `
         <div class="welcome-message">
@@ -275,6 +276,16 @@ function clearChat() {
             </div>
         </div>
     `;
+    
+    // ========== 清除服务器端的对话历史（支持上下文记忆）==========
+    try {
+        await fetch(`${API_BASE}/api/conversation/clear?session_id=default`, {
+            method: 'DELETE'
+        });
+        console.log('Server conversation history cleared');
+    } catch (error) {
+        console.error('Error clearing server conversation history:', error);
+    }
 }
 
 function sendExample(text) {
