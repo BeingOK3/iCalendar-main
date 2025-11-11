@@ -205,8 +205,9 @@ class DeepSeekClient:
         "description": "描述（可选）",
         "calendar_name": "日历名称（可选）",
         "event_id": "事件ID（仅当用户明确提供时使用）",
-        "start_date": "查询开始日期（仅用于 list_events）",
-        "end_date": "查询结束日期（仅用于 list_events）"
+        "start_date": "查询/匹配开始日期（用于 list_events、delete_event、update_event）",
+        "end_date": "查询结束日期（仅用于 list_events）",
+        "search_date": "搜索事件的日期（仅用于 update_event 按日期查找原事件）"
     }},
     "confidence": 0.95,
     "explanation": "对用户输入的理解说明"
@@ -229,11 +230,23 @@ class DeepSeekClient:
 4. 置信度应该在 0-1 之间，表示对解析结果的确信程度
 
 删除和更新事件的特殊处理：
-- 对于删除操作（如"删除和张三的会议"），提取标题关键词到 title 参数
-  示例：{{"action": "delete_event", "params": {{"title": "张三"}}}}
-- 对于更新操作（如"把明天的会议改到后天"），提取原标题到 search_title，新信息到相应字段
-  示例：{{"action": "update_event", "params": {{"search_title": "明天的会议", "start_time": "2025-11-13T09:00:00"}}}}
-- 系统会自动根据标题搜索并匹配事件，无需提供 event_id
+- 对于删除操作（如"删除和张三的会议"、"明天不打游戏了"），必须同时提取：
+  1. 标题关键词 → title 参数
+  2. 时间信息 → start_date（如果只有日期）或 start_time（如果有具体时间）
+  
+  示例：
+  - "删除和张三的会议" → {{"action": "delete_event", "params": {{"title": "张三"}}}}
+  - "明天不打游戏了" → {{"action": "delete_event", "params": {{"title": "打游戏", "start_date": "2025-11-12"}}}}
+  - "下午3点的开会取消" → {{"action": "delete_event", "params": {{"title": "开会", "start_time": "2025-11-11T15:00:00"}}}}
+  
+  ⚠️ 重要：当用户提到"明天"、"今天"、"后天"等时间词时，必须转换为 start_date 或 start_time！
+  
+- 对于更新操作（如"把明天的会议改到后天"），提取原标题到 search_title，原时间到 search_date，新信息到相应字段
+  示例1：{{"action": "update_event", "params": {{"search_title": "会议", "search_date": "2025-11-12", "start_time": "2025-11-13T09:00:00"}}}}
+  示例2：{{"action": "update_event", "params": {{"search_title": "开会", "start_time": "2025-11-13T15:00:00"}}}}
+  
+- 系统会自动根据标题和时间范围搜索并匹配事件，无需提供 event_id
+- 务必记住：用户提到时间信息时（如"明天"、"下午3点"），必须在 params 中包含对应的日期/时间字段！
 """
 
     def _build_user_prompt(self, user_input: str, current_time: datetime, context: Dict[str, Any]) -> str:

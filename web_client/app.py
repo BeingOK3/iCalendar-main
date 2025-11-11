@@ -532,7 +532,6 @@ async def execute_natural_language(request: NaturalLanguageRequest):
             # 如果是查询单天，扩大查询范围到30天，然后在结果中过滤
             is_single_day = (start.date() == end.date() and start.time() == end.time() == datetime.min.time())
             if is_single_day:
-                from datetime import timedelta
                 # 扩大查询范围：前后各15天
                 query_start = start - timedelta(days=15)
                 query_end = start + timedelta(days=30)
@@ -548,7 +547,6 @@ async def execute_natural_language(request: NaturalLanguageRequest):
             
             # ========== 如果是单天查询,过滤出符合原始范围的事件 ==========
             if is_single_day and events:
-                from datetime import timedelta
                 # 设置单天范围:当天00:00:00到第二天00:00:00
                 filter_end = original_start + timedelta(days=1)
                 
@@ -609,13 +607,55 @@ async def execute_natural_language(request: NaturalLanguageRequest):
             # 删除事件
             event_id = params.get("event_id")
             event_title = params.get("title")
+            target_date_str = params.get("start_date")  # 目标日期（如"2025-11-12"）
+            target_time_str = params.get("start_time")  # 目标时间（如"2025-11-12T14:00:00"）
             
-            # 如果没有提供 event_id，尝试通过标题查找
+            logger.info(f"🗑️ DELETE EVENT: event_id={event_id}, title={event_title}, start_date={target_date_str}, start_time={target_time_str}")
+            
+            # 如果没有提供 event_id，尝试通过标题和时间查找
             if not event_id and event_title:
-                # 搜索最近的事件（前后一个月）
-                start_date = datetime.now() - timedelta(days=30)
-                end_date = datetime.now() + timedelta(days=90)
-                events = calendar_manager.list_events(start_date, end_date)
+                # 确定目标时间范围（用于过滤）
+                target_start = None
+                target_end = None
+                
+                if target_time_str:
+                    # 如果指定了具体时间，解析它
+                    target_datetime = datetime.fromisoformat(target_time_str)
+                    target_start = target_datetime.replace(hour=0, minute=0, second=0)
+                    target_end = target_start + timedelta(days=1)
+                    logger.info(f"📅 Using target_time_str: {target_time_str}")
+                elif target_date_str:
+                    # 如果只指定了日期，设置目标范围
+                    target_date = datetime.fromisoformat(target_date_str)
+                    target_start = target_date.replace(hour=0, minute=0, second=0)
+                    target_end = target_start + timedelta(days=1)
+                    logger.info(f"📅 Using target_date_str: {target_date_str}, target range: {target_start} - {target_end}")
+                
+                # ========== 扩大查询范围（CalDAV bug 解决方案）==========
+                # CalDAV 的 search() 对短时间范围返回不完整，扩大到 30 天然后过滤
+                if target_start:
+                    # 有目标时间：扩大查询范围前后各15天
+                    query_start = target_start - timedelta(days=15)
+                    query_end = target_start + timedelta(days=30)
+                    logger.info(f"📅 Expanded query range (CalDAV workaround): {query_start} - {query_end}")
+                else:
+                    # 没有目标时间：使用默认范围
+                    query_start = datetime.now() - timedelta(days=30)
+                    query_end = datetime.now() + timedelta(days=90)
+                    logger.info(f"📅 No time specified, using default range")
+                
+                logger.info(f"🔍 Searching for event to delete: title='{event_title}', query range={query_start} to {query_end}")
+                events = calendar_manager.list_events(query_start, query_end)
+                logger.info(f"📦 Retrieved {len(events)} events from calendar")
+                
+                # ========== 如果指定了目标时间，过滤事件 ==========
+                if target_start and target_end:
+                    events = [e for e in events if e.start_time and target_start <= e.start_time < target_end]
+                    logger.info(f"📊 Filtered to target date range: {len(events)} events")
+                
+                # 打印所有事件用于调试
+                for evt in events:
+                    logger.info(f"  📌 Event: {evt.title} | Start: {evt.start_time}")
                 
                 # 查找标题匹配的事件（模糊匹配）
                 matching_events = [
@@ -623,10 +663,15 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                     if event_title.lower() in e.title.lower() or e.title.lower() in event_title.lower()
                 ]
                 
+                logger.info(f"📋 Found {len(matching_events)} matching events")
+                
                 if not matching_events:
+                    time_desc = ""
+                    if target_date_str or target_time_str:
+                        time_desc = f"在指定时间范围内"
                     return {
                         "success": False,
-                        "message": f"没有找到标题包含 '{event_title}' 的事件"
+                        "message": f"{time_desc}没有找到标题包含 '{event_title}' 的事件"
                     }
                 
                 if len(matching_events) > 1:
@@ -648,6 +693,7 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                 # 只找到一个匹配，使用它
                 event_id = matching_events[0].id
                 event_title = matching_events[0].title
+                logger.info(f"✅ Found unique match: event_id={event_id}, title={event_title}")
             
             if not event_id:
                 return {
@@ -671,12 +717,22 @@ async def execute_natural_language(request: NaturalLanguageRequest):
             # 更新事件
             event_id = params.get("event_id")
             search_title = params.get("search_title")  # 用于搜索的原标题
+            search_date_str = params.get("search_date")  # 用于搜索的日期
             
-            # 如果没有提供 event_id，尝试通过标题查找
+            # 如果没有提供 event_id，尝试通过标题和时间查找
             if not event_id and search_title:
-                # 搜索最近的事件（前后一个月）
-                start_date = datetime.now() - timedelta(days=30)
-                end_date = datetime.now() + timedelta(days=90)
+                # 确定搜索时间范围
+                if search_date_str:
+                    # 如果指定了搜索日期，只搜索那一天
+                    search_date = datetime.fromisoformat(search_date_str)
+                    start_date = search_date.replace(hour=0, minute=0, second=0)
+                    end_date = start_date + timedelta(days=1)
+                else:
+                    # 如果没有指定搜索日期，搜索前后一个月
+                    start_date = datetime.now() - timedelta(days=30)
+                    end_date = datetime.now() + timedelta(days=90)
+                
+                logger.info(f"🔍 Searching for event to update: title='{search_title}', range={start_date} to {end_date}")
                 events = calendar_manager.list_events(start_date, end_date)
                 
                 # 查找标题匹配的事件（模糊匹配）
@@ -685,10 +741,15 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                     if search_title.lower() in e.title.lower() or e.title.lower() in search_title.lower()
                 ]
                 
+                logger.info(f"📋 Found {len(matching_events)} matching events for update")
+                
                 if not matching_events:
+                    time_desc = ""
+                    if search_date_str:
+                        time_desc = f"在指定时间范围内"
                     return {
                         "success": False,
-                        "message": f"没有找到标题包含 '{search_title}' 的事件"
+                        "message": f"{time_desc}没有找到标题包含 '{search_title}' 的事件"
                     }
                 
                 if len(matching_events) > 1:
