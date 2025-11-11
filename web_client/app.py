@@ -492,8 +492,70 @@ async def execute_natural_language(request: NaturalLanguageRequest):
         action = parsed.get("action")
         params = parsed.get("params", {})
         
-        if action == "create_event":
-            # 创建事件
+        if action == "batch_create":
+            # 批量创建多个事件
+            events_data = parsed.get("events", [])
+            
+            if not events_data:
+                return {
+                    "success": False,
+                    "message": "没有找到要创建的事件"
+                }
+            
+            created_events = []
+            failed_events = []
+            
+            for event_data in events_data:
+                try:
+                    event_request = CreateEventRequest(
+                        title=event_data.get("title", "未命名事件"),
+                        start_time=datetime.fromisoformat(event_data["start_time"]),
+                        end_time=datetime.fromisoformat(event_data["end_time"]) if event_data.get("end_time") else None,
+                        location=event_data.get("location"),
+                        description=event_data.get("description"),
+                        calendar_name=event_data.get("calendar_name")
+                    )
+                    event = calendar_manager.create_event(event_request)
+                    created_events.append({
+                        "id": event.id,
+                        "title": event.title,
+                        "start_time": event.start_time.isoformat() if event.start_time else None
+                    })
+                    logger.info(f"✅ Created event: {event.title}")
+                except Exception as e:
+                    failed_events.append({
+                        "title": event_data.get("title", "未命名"),
+                        "error": str(e)
+                    })
+                    logger.error(f"❌ Failed to create event: {event_data.get('title')} - {e}")
+            
+            # 构建响应消息
+            if created_events:
+                event_names = [e["title"] for e in created_events]
+                response_message = f"已创建 {len(created_events)} 个事件: {', '.join(event_names)}"
+                if failed_events:
+                    response_message += f"\n失败 {len(failed_events)} 个"
+            else:
+                response_message = "所有事件创建失败"
+            
+            # ========== 将助手回复添加到历史 ==========
+            add_to_history(session_id, "assistant", response_message)
+            
+            return {
+                "success": len(created_events) > 0,
+                "action": "batch_create",
+                "message": response_message,
+                "data": {
+                    "created": created_events,
+                    "failed": failed_events,
+                    "total": len(events_data),
+                    "success_count": len(created_events),
+                    "failed_count": len(failed_events)
+                }
+            }
+        
+        elif action == "create_event":
+            # 创建单个事件
             event_request = CreateEventRequest(
                 title=params.get("title", "未命名事件"),
                 start_time=datetime.fromisoformat(params["start_time"]),

@@ -188,17 +188,20 @@ class DeepSeekClient:
 
 你需要识别以下操作类型：
 1. create_event - 创建新事件
-2. list_events - 查询事件列表
-3. update_event - 更新现有事件
-4. delete_event - 删除事件
-5. query - 一般性查询
+2. batch_create - 批量创建多个事件（当用户一次提到多个事件时使用）
+3. list_events - 查询事件列表
+4. update_event - 更新现有事件
+5. delete_event - 删除事件
+6. query - 一般性查询
 
 请严格按照以下 JSON 格式返回结果：
+
+单个操作：
 {{
     "action": "操作类型",
     "params": {{
         "title": "事件标题（用于 create_event、update_event 和 delete_event）",
-        "search_title": "搜索的原标题（仅用于 update_event，如'把明天的会议'中的'明天的会议'）",
+        "search_title": "搜索的原标题（仅用于 update_event）",
         "start_time": "开始时间 ISO8601 格式（如 2025-11-13T15:00:00）",
         "end_time": "结束时间 ISO8601 格式（可选）",
         "location": "地点（可选）",
@@ -211,6 +214,27 @@ class DeepSeekClient:
     }},
     "confidence": 0.95,
     "explanation": "对用户输入的理解说明"
+}}
+
+批量创建（当用户一次提到多个事件时）：
+{{
+    "action": "batch_create",
+    "events": [
+        {{
+            "title": "事件1标题",
+            "start_time": "2025-11-12T09:00:00",
+            "end_time": "2025-11-12T10:00:00",
+            "location": "可选",
+            "description": "可选"
+        }},
+        {{
+            "title": "事件2标题",
+            "start_time": "2025-11-12T14:00:00",
+            "end_time": "2025-11-12T15:00:00"
+        }}
+    ],
+    "confidence": 0.95,
+    "explanation": "识别到多个事件"
 }}
 
 时间解析规则：
@@ -228,6 +252,14 @@ class DeepSeekClient:
 2. 时区默认使用当地时区（不要添加 +08:00 等后缀）
 3. 如果用户没有指定结束时间，默认为开始时间后1小时
 4. 置信度应该在 0-1 之间，表示对解析结果的确信程度
+
+批量创建识别规则：
+- 当用户在一句话中提到多个事件时，使用 batch_create
+- 示例1："明天上午9点开会，下午2点培训" → batch_create with 2 events
+- 示例2："今天下午3点开会，5点吃饭，晚上8点看电影" → batch_create with 3 events
+- 示例3："周一到周五每天上午9点开会" → 应该识别为单个重复事件，不是批量创建
+- 每个事件必须有独立的标题和时间
+- 如果只提到一个事件，使用 create_event 而不是 batch_create
 
 删除和更新事件的特殊处理：
 - 对于删除操作，分为两种情况：
