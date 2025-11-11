@@ -280,6 +280,12 @@ class Event:
         title = getattr(vevent, 'summary', '').value if hasattr(vevent, 'summary') and vevent.summary else 'No Title'
         start_time = getattr(vevent, 'dtstart', '').value if hasattr(vevent, 'dtstart') and vevent.dtstart else None
         end_time = getattr(vevent, 'dtend', '').value if hasattr(vevent, 'dtend') and vevent.dtend else None
+        
+        # 统一时区: 将所有带时区的 datetime 转换为 naive datetime
+        if start_time and hasattr(start_time, 'tzinfo') and start_time.tzinfo:
+            start_time = start_time.replace(tzinfo=None)
+        if end_time and hasattr(end_time, 'tzinfo') and end_time.tzinfo:
+            end_time = end_time.replace(tzinfo=None)
 
         location = None
         if hasattr(vevent, 'location') and vevent.location:

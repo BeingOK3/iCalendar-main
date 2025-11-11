@@ -311,6 +311,11 @@ async def list_events(
         
         events = calendar_manager.list_events(start, end, calendar_name)
         
+        # ========== 调试日志：显示日历视图查询的事件 ==========
+        logger.info(f"📊 Calendar view query found {len(events)} events from {start} to {end}")
+        for evt in events[:10]:  # 只显示前10个
+            logger.info(f"  📌 {evt.title} | Start: {evt.start_time}")
+        
         # 转换为字典格式
         events_data = []
         for event in events:
@@ -470,6 +475,9 @@ async def execute_natural_language(request: NaturalLanguageRequest):
         # ========== 解析命令（当前用户输入会在这里发送给 API）==========
         parsed = await deepseek_client.parse_calendar_command(request.text, context)
         
+        # ========== 调试日志：显示解析结果 ==========
+        logger.info(f"🤖 DeepSeek parsed result: action={parsed.get('action')}, params={parsed.get('params')}")
+        
         # ========== 解析成功后，保存当前用户消息到历史 ==========
         add_to_history(session_id, "user", request.text)
         
@@ -515,7 +523,57 @@ async def execute_natural_language(request: NaturalLanguageRequest):
             # 查询事件
             start = datetime.fromisoformat(params["start_date"])
             end = datetime.fromisoformat(params["end_date"])
-            events = calendar_manager.list_events(start, end, params.get("calendar_name"))
+            
+            # ========== 修复：CalDAV短时间范围查询有问题，使用较长范围然后过滤 ==========
+            # 保存原始的查询范围
+            original_start = start
+            original_end = end
+            
+            # 如果是查询单天，扩大查询范围到30天，然后在结果中过滤
+            is_single_day = (start.date() == end.date() and start.time() == end.time() == datetime.min.time())
+            if is_single_day:
+                from datetime import timedelta
+                # 扩大查询范围：前后各15天
+                query_start = start - timedelta(days=15)
+                query_end = start + timedelta(days=30)
+                logger.info(f"📅 Single day query detected, expanding search range to {query_start} - {query_end}")
+            else:
+                query_start = start
+                query_end = end
+            
+            # ========== 调试日志：记录查询参数 ==========
+            logger.info(f"🔍 Querying events: start={query_start}, end={query_end}, calendar={params.get('calendar_name')}")
+            
+            events = calendar_manager.list_events(query_start, query_end, params.get("calendar_name"))
+            
+            # ========== 如果是单天查询,过滤出符合原始范围的事件 ==========
+            if is_single_day and events:
+                from datetime import timedelta
+                # 设置单天范围:当天00:00:00到第二天00:00:00
+                filter_end = original_start + timedelta(days=1)
+                
+                # 过滤事件(Event模型已经统一为naive datetime,直接比较)
+                filtered_events = []
+                for e in events:
+                    if not e.start_time:
+                        continue
+                    
+                    # 比较日期是否在范围内
+                    if original_start <= e.start_time < filter_end:
+                        filtered_events.append(e)
+                
+                events = filtered_events
+                logger.info(f"📊 Filtered events to match original date range: {len(events)} events")
+            
+            # ========== 调试日志：记录查询结果 ==========
+            logger.info(f"📋 Found {len(events)} events")
+            
+            # ========== 详细日志：显示每个事件的时间 ==========
+            if events:
+                for evt in events:
+                    logger.info(f"  📌 Event: {evt.title} | Start: {evt.start_time} | End: {evt.end_time}")
+            else:
+                logger.warning(f"⚠️ No events found in range {start} to {end}")
             
             events_data = [
                 {
@@ -526,6 +584,10 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                 }
                 for e in events
             ]
+            
+            # ========== 调试日志：显示事件详情 ==========
+            if events_data:
+                logger.info(f"📅 Events details: {[e['title'] for e in events_data[:5]]}")
             
             # 生成摘要
             summary = await deepseek_client.generate_event_summary(events_data)
