@@ -121,16 +121,26 @@ class DeepSeekClient:
         # 构建用户提示词
         user_prompt = self._build_user_prompt(user_input, current_time, context)
         
+        # ========== 构建消息列表（支持对话历史）==========
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # 如果上下文中包含对话历史，添加到消息列表中
+        conversation_history = context.get("conversation_history", [])
+        if conversation_history:
+            # 添加历史对话（不包括系统消息）
+            messages.extend(conversation_history)
+            logger.info(f"Added {len(conversation_history)} historical messages to API call")
+        
+        # 添加当前用户输入
+        messages.append({"role": "user", "content": user_prompt})
+        
         try:
             # 调用 DeepSeek API
             response = await self.client.post(
                 "/v1/chat/completions",
                 json={
                     "model": "deepseek-chat",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
+                    "messages": messages,  # 使用包含历史的消息列表
                     "temperature": 0.1,  # 使用较低的温度以获得更一致的结果
                     "max_tokens": 2000,
                     "response_format": {"type": "json_object"}

@@ -451,12 +451,10 @@ async def execute_natural_language(request: NaturalLanguageRequest):
     try:
         session_id = request.session_id or "default"
         
-        # ========== 获取对话历史 ==========
+        # ========== 获取对话历史（在添加当前消息之前）==========
         # 获取最近 5 轮对话（10 条消息）用于上下文理解
+        # 注意：此时不包含当前用户消息，当前消息会在 DeepSeek 客户端中添加
         history_messages = get_history_for_api(session_id, max_messages=10)
-        
-        # ========== 添加当前用户消息到历史 ==========
-        add_to_history(session_id, "user", request.text)
         
         # 添加上下文
         context = request.context or {}
@@ -469,8 +467,11 @@ async def execute_natural_language(request: NaturalLanguageRequest):
             context["conversation_history"] = history_messages
             logger.info(f"Using {len(history_messages)} historical messages for context")
         
-        # 解析命令
+        # ========== 解析命令（当前用户输入会在这里发送给 API）==========
         parsed = await deepseek_client.parse_calendar_command(request.text, context)
+        
+        # ========== 解析成功后，保存当前用户消息到历史 ==========
+        add_to_history(session_id, "user", request.text)
         
         if parsed.get("action") == "error":
             return {
