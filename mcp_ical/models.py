@@ -20,7 +20,7 @@ Pydantic 请求模型（CreateEventRequest, UpdateEventRequest）。
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, date
 from enum import IntEnum
 from typing import Annotated, Self, Optional
 
@@ -280,7 +280,15 @@ class Event:
         title = getattr(vevent, 'summary', '').value if hasattr(vevent, 'summary') and vevent.summary else 'No Title'
         start_time = getattr(vevent, 'dtstart', '').value if hasattr(vevent, 'dtstart') and vevent.dtstart else None
         end_time = getattr(vevent, 'dtend', '').value if hasattr(vevent, 'dtend') and vevent.dtend else None
-        
+
+        # Handle all-day events: convert date objects to datetime objects
+        # For all-day events, CalDAV returns date objects instead of datetime objects
+        # We need to convert them to datetime to maintain type consistency
+        if isinstance(start_time, date) and not isinstance(start_time, datetime):
+            start_time = datetime.combine(start_time, datetime.min.time())
+        if isinstance(end_time, date) and not isinstance(end_time, datetime):
+            end_time = datetime.combine(end_time, datetime.min.time())
+
         # 统一时区: 将所有带时区的 datetime 转换为 naive datetime
         if start_time and hasattr(start_time, 'tzinfo') and start_time.tzinfo:
             start_time = start_time.replace(tzinfo=None)

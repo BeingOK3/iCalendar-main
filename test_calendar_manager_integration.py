@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from src.mcp_ical.ical import CalendarManager, NoSuchCalendarException
-from src.mcp_ical.models import (
+from mcp_ical.ical import CalendarManager, NoSuchCalendarException
+from mcp_ical.models import (
     CreateEventRequest,
     Frequency,
     RecurrenceRule,
