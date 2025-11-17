@@ -75,3 +75,7 @@ CLAUDE.md
 
 # Claude Desktop and MCP configurations (if containing personal data)
 claude_desktop_config.json
+
+# OpenSpec - specifications and change management
+openspec/
+.openspec/
