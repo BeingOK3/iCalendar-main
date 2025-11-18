@@ -700,7 +700,26 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                         e for e in events 
                         if event_title.lower() in e.title.lower() or e.title.lower() in event_title.lower()
                     ]
-                    logger.info(f"📋 Found {len(matching_events)} matching events")
+                    logger.info(f"📋 Found {len(matching_events)} matching events by title")
+                
+                # 如果指定了精确的时间范围（start_time 和 end_time），进一步过滤
+                if target_time_str and 'end_time' in params:
+                    end_time_str = params['end_time']
+                    try:
+                        target_start = datetime.fromisoformat(target_time_str)
+                        target_end = datetime.fromisoformat(end_time_str)
+                        
+                        # 只保留在指定时间范围内的事件
+                        time_filtered = [
+                            e for e in matching_events
+                            if e.start_time and target_start <= e.start_time < target_end
+                        ]
+                        
+                        logger.info(f"⏰ Time range filter: {target_start} to {target_end}")
+                        logger.info(f"📋 After time filtering: {len(time_filtered)} events")
+                        matching_events = time_filtered
+                    except ValueError as e:
+                        logger.warning(f"⚠️ Failed to parse time range: {e}")
                 
                 if not matching_events:
                     time_desc = ""
@@ -760,22 +779,55 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                         }
                     }
                 
-                # 处理单个事件删除
+                # 处理单个或多个事件删除
                 if len(matching_events) > 1:
-                    # 找到多个匹配，返回列表让用户选择
-                    events_list = [
-                        {
-                            "id": e.id,
-                            "title": e.title,
-                            "start_time": e.start_time.isoformat() if e.start_time else None
+                    # 如果指定了时间范围（有 end_time），批量删除所有匹配的事件
+                    if target_time_str and 'end_time' in params:
+                        deleted_count = 0
+                        failed_count = 0
+                        deleted_titles = []
+                        
+                        for event in matching_events:
+                            if calendar_manager.delete_event(event.id):
+                                deleted_count += 1
+                                deleted_titles.append(event.title)
+                            else:
+                                failed_count += 1
+                        
+                        logger.info(f"✅ Time-range batch delete: {deleted_count} deleted, {failed_count} failed")
+                        
+                        if deleted_count > 0:
+                            response_message = f"已删除 {deleted_count} 个事件: {', '.join(set(deleted_titles))}"
+                        else:
+                            response_message = "删除失败"
+                        
+                        # ========== 将助手回复添加到历史 ==========
+                        add_to_history(session_id, "assistant", response_message)
+                        
+                        return {
+                            "success": deleted_count > 0,
+                            "action": "delete_event",
+                            "message": response_message,
+                            "data": {
+                                "deleted_count": deleted_count,
+                                "failed_count": failed_count
+                            }
                         }
-                        for e in matching_events
-                    ]
-                    return {
-                        "success": False,
-                        "message": f"找到 {len(matching_events)} 个匹配的事件，请明确指定：",
-                        "data": {"events": events_list}
-                    }
+                    else:
+                        # 没有指定时间范围，返回列表让用户选择
+                        events_list = [
+                            {
+                                "id": e.id,
+                                "title": e.title,
+                                "start_time": e.start_time.isoformat() if e.start_time else None
+                            }
+                            for e in matching_events
+                        ]
+                        return {
+                            "success": False,
+                            "message": f"找到 {len(matching_events)} 个匹配的事件，请明确指定：",
+                            "data": {"events": events_list}
+                        }
                 
                 # 只找到一个匹配，使用它
                 event_id = matching_events[0].id

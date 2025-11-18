@@ -247,6 +247,14 @@ class DeepSeekClient:
 - "晚上8点" = 20:00:00
 - 如果没有指定具体时间，默认使用 09:00:00
 
+时间段解析规则（用于查询和删除操作）：
+- "上午" = 06:00:00 到 12:00:00（start_time: {current_time.strftime('%Y-%m-%d')}T06:00:00, end_time: {current_time.strftime('%Y-%m-%d')}T12:00:00）
+- "下午" = 12:00:00 到 18:00:00（start_time: {current_time.strftime('%Y-%m-%d')}T12:00:00, end_time: {current_time.strftime('%Y-%m-%d')}T18:00:00）
+- "晚上" = 18:00:00 到 23:59:59（start_time: {current_time.strftime('%Y-%m-%d')}T18:00:00, end_time: {current_time.strftime('%Y-%m-%d')}T23:59:59）
+
+⚠️ 重要：当用户使用时间段词（上午/下午/晚上）进行查询或删除时，必须同时提供 start_time 和 end_time 来界定时间范围！
+示例："明天下午不去看海了" → {{"action": "delete_event", "params": {{"title": "看海", "start_time": "2025-01-11T12:00:00", "end_time": "2025-01-11T18:00:00"}}}}
+
 注意事项：
 1. 所有日期时间必须使用 ISO8601 格式
 2. 时区默认使用当地时区（不要添加 +08:00 等后缀）

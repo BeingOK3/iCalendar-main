@@ -182,7 +182,22 @@ async function processNaturalLanguage(text) {
         hideTypingIndicator();
         
         // 添加AI响应到聊天界面
-        const message = result.response || result.message || '操作完成';
+        let message = result.response || result.message || '操作完成';
+        
+        // 如果返回了事件列表，格式化显示
+        if (result.data && result.data.events && result.data.events.length > 0) {
+            message += '\n\n';
+            result.data.events.forEach((event, index) => {
+                const startTime = event.start_time ? new Date(event.start_time).toLocaleString('zh-CN', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }) : '时间未知';
+                message += `\n${index + 1}. ${event.title} (${startTime})`;
+            });
+        }
+        
         addMessage(message, 'ai');
         
         // 如果操作成功，重新加载事件
