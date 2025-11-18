@@ -56,17 +56,37 @@ class CalDAVManager:
         calendars = [calendar] if calendar else self._get_all_calendars()
         logger.debug(f"Found {len(calendars)} calendar(s) to search")
 
+        # ========== iCloud CalDAV Bug 修复 ==========
+        # 根本原因：iCloud CalDAV 服务器对 ≤1天 的时间范围查询有 bug，会返回空结果
+        # 测试验证：查询1天返回0个事件，查询2天返回正常结果
+        # 解决方案：检测短时间范围查询，自动扩大到至少2天，然后在结果中过滤
+        original_start = start_time
+        original_end = end_time
+        time_range_days = (end_time - start_time).total_seconds() / 86400  # 转换为天数
+        
+        query_start = start_time
+        query_end = end_time
+        need_filter = False
+        
+        if time_range_days <= 1.0:
+            # 查询范围 ≤1天，扩大到2天以绕过 iCloud bug
+            query_end = start_time + timedelta(days=2)
+            need_filter = True
+            logger.debug(f"⚠️ iCloud CalDAV bug workaround: expanding query from {time_range_days:.2f} days to 2 days")
+            logger.debug(f"   Original range: {original_start} to {original_end}")
+            logger.debug(f"   Query range: {query_start} to {query_end}")
+
         events = []
         for i, cal in enumerate(calendars):
             try:
                 logger.debug(f"Searching calendar {i+1}/{len(calendars)}: {cal.name}")
                 logger.debug(f"Calendar URL: {cal.url}")
 
-                # Use CalDAV time-range search
-                logger.debug(f"Performing CalDAV search with start={start_time}, end={end_time}, expand=True")
+                # Use CalDAV time-range search with potentially expanded range
+                logger.debug(f"Performing CalDAV search with start={query_start}, end={query_end}, expand=True")
                 results = cal.search(
-                    start=start_time,
-                    end=end_time,
+                    start=query_start,
+                    end=query_end,
                     event=True,
                     expand=True
                 )
@@ -93,6 +113,15 @@ class CalDAVManager:
                 logger.debug(f"Calendar details that failed: name='{cal.name}', url='{cal.url}'")
                 # Continue with other calendars instead of failing completely
                 continue
+
+        # ========== 如果扩大了查询范围，过滤出原始范围内的事件 ==========
+        if need_filter and events:
+            filtered_events = []
+            for e in events:
+                if e.start_time and original_start <= e.start_time < original_end:
+                    filtered_events.append(e)
+            logger.debug(f"📊 Filtered {len(events)} events down to {len(filtered_events)} within original range")
+            events = filtered_events
 
         logger.debug(f"Returning total of {len(events)} successfully parsed events")
         return events
@@ -212,8 +241,30 @@ class CalDAVManager:
         # Update fields
         if request.title is not None:
             vevent.summary.value = request.title
+        
+        # ========== 智能处理 start_time 和 end_time 的更新 ==========
         if request.start_time is not None:
+            old_start = vevent.dtstart.value
+            old_end = vevent.dtend.value if hasattr(vevent, 'dtend') and vevent.dtend else old_start
+            
+            # 计算原事件的持续时间
+            if isinstance(old_start, datetime) and isinstance(old_end, datetime):
+                duration = old_end - old_start
+            else:
+                # 如果不是 datetime，设置默认持续时间为1小时
+                duration = timedelta(hours=1)
+            
+            # 更新 start_time
             vevent.dtstart.value = request.start_time
+            
+            # 如果没有显式指定 end_time，自动调整以保持持续时间
+            if request.end_time is None:
+                # 如果原持续时间为0（start == end），设置默认1小时
+                if duration.total_seconds() == 0:
+                    duration = timedelta(hours=1)
+                vevent.dtend.value = request.start_time + duration
+                logger.debug(f"Auto-adjusted end_time to {vevent.dtend.value} (duration: {duration})")
+        
         if request.end_time is not None:
             vevent.dtend.value = request.end_time
         if request.location is not None:
@@ -270,8 +321,40 @@ class CalDAVManager:
             return Event.from_caldav_event(event)
 
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Failed to update event: {e}")
-            raise
+            
+            # 提供更友好的错误提示
+            if "Forbidden" in error_msg or "403" in error_msg:
+                # 检查是否是本地创建的事件（包含 @hostname.local）
+                # 注意：URL可能被编码，@变成%40
+                is_local_event = ("@" in event_id and ".local" in event_id) or \
+                                ("@" in error_msg and ".local" in error_msg) or \
+                                ("%40" in error_msg and ".local" in error_msg)
+                
+                if is_local_event:
+                    raise ValueError(
+                        f"无法更新事件：iCloud 同步延迟。\n"
+                        f"这个事件是刚创建的，可能还没完全同步到 iCloud 服务器。\n"
+                        f"建议：\n"
+                        f"1. 等待几秒后再试\n"
+                        f"2. 或者先删除这个事件，然后重新创建\n"
+                        f"3. 或者直接在 iCloud 日历中修改"
+                    ) from e
+                else:
+                    raise ValueError(
+                        f"无法更新事件：没有权限（Forbidden）。\n"
+                        f"可能原因：\n"
+                        f"1. 事件在只读日历中（如订阅的日历）\n"
+                        f"2. 应用专用密码权限不足\n"
+                        f"3. 事件被锁定或受保护"
+                    ) from e
+            elif "Unauthorized" in error_msg or "401" in error_msg:
+                raise ValueError(
+                    "更新事件失败：未授权。请检查您的 Apple ID 和应用专用密码是否正确。"
+                ) from e
+            else:
+                raise ValueError(f"更新事件失败: {error_msg}") from e
 
     def delete_event(self, event_id: str) -> bool:
         """Delete an event by its identifier."""

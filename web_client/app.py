@@ -586,44 +586,19 @@ async def execute_natural_language(request: NaturalLanguageRequest):
             start = datetime.fromisoformat(params["start_date"])
             end = datetime.fromisoformat(params["end_date"])
             
-            # ========== 修复：CalDAV短时间范围查询有问题，使用较长范围然后过滤 ==========
-            # 保存原始的查询范围
-            original_start = start
-            original_end = end
-            
-            # 如果是查询单天，扩大查询范围到30天，然后在结果中过滤
-            is_single_day = (start.date() == end.date() and start.time() == end.time() == datetime.min.time())
-            if is_single_day:
-                # 扩大查询范围：前后各15天
-                query_start = start - timedelta(days=15)
-                query_end = start + timedelta(days=30)
-                logger.info(f"📅 Single day query detected, expanding search range to {query_start} - {query_end}")
-            else:
-                query_start = start
-                query_end = end
+            # ========== 修复：如果 start 和 end 是同一天，end 应该是第二天 00:00:00 ==========
+            # DeepSeek 可能返回 start_date='2025-11-18', end_date='2025-11-18'
+            # 这意味着查询"今天"，但转换后 start=end=2025-11-18 00:00:00（范围为0）
+            # 我们需要将 end 设置为第二天 00:00:00 以覆盖整天
+            if start.date() == end.date() and end.time() == datetime.min.time():
+                end = end + timedelta(days=1)
+                logger.debug(f"📅 Adjusted end date to next day for full day coverage: {end}")
             
             # ========== 调试日志：记录查询参数 ==========
-            logger.info(f"🔍 Querying events: start={query_start}, end={query_end}, calendar={params.get('calendar_name')}")
+            logger.info(f"🔍 Querying events: start={start}, end={end}, calendar={params.get('calendar_name')}")
             
-            events = calendar_manager.list_events(query_start, query_end, params.get("calendar_name"))
-            
-            # ========== 如果是单天查询,过滤出符合原始范围的事件 ==========
-            if is_single_day and events:
-                # 设置单天范围:当天00:00:00到第二天00:00:00
-                filter_end = original_start + timedelta(days=1)
-                
-                # 过滤事件(Event模型已经统一为naive datetime,直接比较)
-                filtered_events = []
-                for e in events:
-                    if not e.start_time:
-                        continue
-                    
-                    # 比较日期是否在范围内
-                    if original_start <= e.start_time < filter_end:
-                        filtered_events.append(e)
-                
-                events = filtered_events
-                logger.info(f"📊 Filtered events to match original date range: {len(events)} events")
+            # CalDAV 层已经处理了 iCloud 短时间范围查询的 bug，这里直接调用即可
+            events = calendar_manager.list_events(start, end, params.get("calendar_name"))
             
             # ========== 调试日志：记录查询结果 ==========
             logger.info(f"📋 Found {len(events)} events")
@@ -693,27 +668,22 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                     target_end = target_start + timedelta(days=1)
                     logger.info(f"📅 Using target_date_str: {target_date_str}, target range: {target_start} - {target_end}")
                 
-                # ========== 扩大查询范围（CalDAV bug 解决方案）==========
-                # CalDAV 的 search() 对短时间范围返回不完整，扩大到 30 天然后过滤
+                # ========== 确定查询范围 ==========
                 if target_start:
-                    # 有目标时间：扩大查询范围前后各15天
-                    query_start = target_start - timedelta(days=15)
-                    query_end = target_start + timedelta(days=30)
-                    logger.info(f"📅 Expanded query range (CalDAV workaround): {query_start} - {query_end}")
+                    # 有目标时间：查询当天
+                    query_start = target_start
+                    query_end = target_end
+                    logger.info(f"📅 Using target date range: {query_start} - {query_end}")
                 else:
                     # 没有目标时间：使用默认范围
                     query_start = datetime.now() - timedelta(days=30)
                     query_end = datetime.now() + timedelta(days=90)
                     logger.info(f"📅 No time specified, using default range")
                 
-                logger.info(f"🔍 Searching for event to delete: title='{event_title}', query range={query_start} to {query_end}")
+                logger.info(f"🔍 Searching for event to delete: title='{event_title}', range={query_start} to {query_end}")
+                # CalDAV 层已经处理了短时间范围查询的 bug
                 events = calendar_manager.list_events(query_start, query_end)
                 logger.info(f"📦 Retrieved {len(events)} events from calendar")
-                
-                # ========== 如果指定了目标时间，过滤事件 ==========
-                if target_start and target_end:
-                    events = [e for e in events if e.start_time and target_start <= e.start_time < target_end]
-                    logger.info(f"📊 Filtered to target date range: {len(events)} events")
                 
                 # 打印所有事件用于调试
                 for evt in events:
@@ -850,6 +820,7 @@ async def execute_natural_language(request: NaturalLanguageRequest):
                     end_date = datetime.now() + timedelta(days=90)
                 
                 logger.info(f"🔍 Searching for event to update: title='{search_title}', range={start_date} to {end_date}")
+                # CalDAV 层已经处理了短时间范围查询的 bug
                 events = calendar_manager.list_events(start_date, end_date)
                 
                 # 查找标题匹配的事件（模糊匹配）
